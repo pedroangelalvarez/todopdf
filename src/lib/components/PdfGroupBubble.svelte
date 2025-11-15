@@ -3,16 +3,20 @@
 
   export let file: File;
   export let onRemove: (file: File) => void = () => {};
-  export let onSplit: (file: File) => void = () => {};
 
+  let objectUrl = '';
   let numPages = 0;
   let loading = true;
   let error = '';
   let expanded = false;
+  let thumbsLoaded = false;
+  let thumbUrls: string[] = [];
+  let workerRef: Worker | null = null;
 
   onMount(async () => {
     try {
       const { PDFDocument } = await import('pdf-lib');
+      objectUrl = URL.createObjectURL(file);
       const buf = await file.arrayBuffer();
       const pdfDoc = await PDFDocument.load(buf);
       numPages = pdfDoc.getPages().length;
@@ -26,13 +30,55 @@
 
   function toggleExpand() {
     expanded = !expanded;
+    if (expanded && !thumbsLoaded) {
+      renderThumbnails();
+    }
   }
+
+  async function renderThumbnails() {
+    try {
+      const pdfjsModule: any = await import('pdfjs-dist');
+      const workerUrl = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url);
+      workerRef = new Worker(workerUrl, { type: 'module' });
+      pdfjsModule.GlobalWorkerOptions.workerPort = workerRef;
+
+      const pdf = await pdfjsModule.getDocument({ url: objectUrl }).promise;
+      const urls: string[] = [];
+      const maxThumbs = Math.min(numPages, 12);
+      for (let i = 1; i <= maxThumbs; i++) {
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale: 0.3 });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) continue;
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        urls.push(canvas.toDataURL('image/png'));
+      }
+      thumbUrls = urls;
+      thumbsLoaded = true;
+      pdf.destroy();
+      workerRef?.terminate();
+      workerRef = null;
+    } catch (e) {
+      console.error('Error generando miniaturas PDF', e);
+    }
+  }
+
+  // Limpieza en desmontaje
+  import { onDestroy } from 'svelte';
+  onDestroy(() => {
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    workerRef?.terminate();
+    workerRef = null;
+  });
 </script>
 
 <div class="pdf-bubble" class:expanded class:single={!loading && !error && numPages <= 1}>
   {#if !loading && !error && numPages > 1}
-    <button class="expand-btn" aria-label="Expandir" on:click|stopPropagation={() => onSplit(file)}>
-      +
+    <button class="expand-btn" aria-label="Expandir" on:click|stopPropagation={toggleExpand}>
+      {#if expanded}–{:else}+{/if}
     </button>
   {/if}
   <button class="remove-btn" aria-label="Quitar PDF" on:click|stopPropagation={() => onRemove(file)}>✕</button>
@@ -40,7 +86,7 @@
   <div class="content">
     <div class="pdf-icon">PDF</div>
     <div class="info">
-      <div class="name" title={file.name}>{file.name}</div>
+      <div class="name" title={file?.name || ''}>{file?.name || ''}</div>
       {#if loading}
         <div class="pages">Cargando páginas…</div>
       {:else if error}
@@ -51,7 +97,22 @@
     </div>
   </div>
 
-  <!-- Al expandir, se ejecuta la división y esta área ya no es necesaria -->
+  {#if expanded}
+    <div class="expanded-area">
+      {#if !thumbsLoaded}
+        <div class="loading">Generando miniaturas…</div>
+      {:else}
+        <div class="pages-grid">
+          {#each thumbUrls as url, i}
+            <div class="page-box" title={`Página ${i+1}`}>
+              <img src={url} alt={`Página ${i+1}`} />
+              <div class="page-index">{i + 1}</div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -68,7 +129,7 @@
     overflow: hidden;
   }
   .pdf-bubble.expanded {
-    height: 320px;
+    height: 360px;
   }
   .pdf-bubble:not(.single) { width: 220px; height: 220px; }
   .expand-btn {
@@ -137,14 +198,39 @@
   .pages.error { color: #ef4444; }
 
   .expanded-area {
-    margin: 0 16px 16px 16px;
-    padding: 12px;
+    margin: 0 12px 12px 12px;
+    padding: 8px;
     border-radius: 12px;
     background: #ffffff;
     border: 1px solid rgba(0,0,0,0.06);
-    box-shadow: 0 8px 20px rgba(0,0,0,0.06);
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.03);
     color: #0f172a;
-    font-size: 13px;
+    font-size: 12px;
     line-height: 1.4;
+    overflow: auto;
+  }
+  .loading { color: #64748b; padding: 8px; }
+  .pages-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 8px;
+  }
+  .page-box {
+    position: relative;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 8px;
+    overflow: hidden;
+    background: #f8fafc;
+  }
+  .page-box img { width: 100%; display: block; }
+  .page-index {
+    position: absolute;
+    right: 6px;
+    bottom: 4px;
+    background: rgba(15,23,42,0.6);
+    color: #fff;
+    padding: 2px 6px;
+    border-radius: 999px;
+    font-size: 11px;
   }
 </style>

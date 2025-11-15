@@ -1,7 +1,6 @@
 <script lang="ts">
   import FileDropzone from "$lib/components/FileDropzone.svelte";
   import ImageCropModal from "$lib/components/ImageCropModal.svelte";
-  import { splitPdfIntoPages } from "$lib/utils/splitPdf";
   import FileList from "$lib/components/FileList.svelte";
   import ImageCropperModal from "$lib/components/ImageCropperModal.svelte";
   import { getFileType } from "$lib/utils/fileTypes";
@@ -61,17 +60,6 @@
     files = files.filter(f => f !== file);
   }
 
-  async function splitPdf(file: File) {
-    try {
-      const pages = await splitPdfIntoPages(file);
-      files = [...files.filter(f => f !== file), ...pages];
-    } catch (e) {
-      console.error(e);
-      toastMsg = 'Error al dividir el PDF';
-      showToast = true;
-      setTimeout(() => (showToast = false), 4000);
-    }
-  }
 
   async function processAll() {
     if (!files.length || processing) return;
@@ -95,7 +83,7 @@
   }
 </script>
 
-<FileDropzone on:filesAdded={handleFilesAdded} {files} onEditImage={openEditor} onRemoveFile={removeFile} onSplitPdf={splitPdf} />
+<FileDropzone on:filesAdded={handleFilesAdded} {files} onEditImage={openEditor} onRemoveFile={removeFile} />
 
 {#if editorFile}
   <ImageCropModal file={editorFile} onClose={() => (editorFile = null)} onSave={saveEditedImage} />

@@ -7,7 +7,6 @@
   export let files: File[] = [];
   export let onEditImage: (file: File) => void = () => {};
   export let onRemoveFile: (file: File) => void = () => {};
-  export let onSplitPdf: (file: File) => void = () => {};
 
   const dispatch = createEventDispatcher();
 
@@ -50,7 +49,7 @@
       {:else}
         {#each files as f}
           {#if getFileType(f) === 'pdf'}
-            <PdfGroupBubble file={f} onRemove={onRemoveFile} onSplit={onSplitPdf} />
+            <PdfGroupBubble file={f} onRemove={onRemoveFile} />
           {:else}
             <FileThumbnail file={f} fileType={getFileType(f)} onEdit={onEditImage} onRemove={onRemoveFile} />
           {/if}
