@@ -47,6 +47,17 @@
     }
   }
 
+  function handleFilesUnlocked(e: CustomEvent<{ original: File; pages: File[] }>) {
+    const { original, pages } = e.detail;
+    files = files.filter(f => f !== original);
+    files = [...files, ...pages];
+    notify('PDF desbloqueado en páginas individuales');
+  }
+
+  function handleReorder(e: CustomEvent<{ files: File[] }>) {
+    files = e.detail.files;
+  }
+
   function openEditor(file: File) {
     editorFile = file;
   }
@@ -83,7 +94,7 @@
   }
 </script>
 
-<FileDropzone on:filesAdded={handleFilesAdded} {files} onEditImage={openEditor} onRemoveFile={removeFile} />
+<FileDropzone on:filesAdded={handleFilesAdded} on:filesUnlocked={handleFilesUnlocked} on:reorder={handleReorder} {files} onEditImage={openEditor} onRemoveFile={removeFile} />
 
 {#if editorFile}
   <ImageCropModal file={editorFile} onClose={() => (editorFile = null)} onSave={saveEditedImage} />
