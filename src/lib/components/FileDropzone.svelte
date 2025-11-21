@@ -3,6 +3,7 @@
 	import FileThumbnail from './FileThumbnail.svelte';
 	import { getFileType } from '$lib/utils/fileTypes';
 	import PdfGroupBubble from './PdfGroupBubble.svelte';
+	import WordGroupBubble from './WordGroupBubble.svelte';
 
 	export let files: File[] = [];
 	export let onEditImage: (file: File) => void = () => {};
@@ -63,14 +64,9 @@
 	on:click={triggerSelect}
 >
 	<div class="inner">
-		<div class="header">
-			<div class="icon" aria-hidden="true">⬆️</div>
-			<p>Arrastra tus archivos o haz click para seleccionar</p>
-		</div>
-
 		<div class="preview-grid">
 			{#if files.length === 0}
-				<div class="empty">No hay archivos aún</div>
+				<div class="empty">ARRASTRA TUS ARCHIVOS AQUÍ</div>
 			{:else}
 				{#each files as f, i (f.name + '-' + f.size + '-' + f.lastModified)}
 					<div
@@ -87,6 +83,8 @@
 								onRemove={onRemoveFile}
 								on:unlock={(e) => handleUnlock(f, e.detail.pages)}
 							/>
+						{:else if getFileType(f) === 'docx'}
+							<WordGroupBubble file={f} onRemove={onRemoveFile} />
 						{:else}
 							<FileThumbnail
 								file={f}
@@ -105,7 +103,7 @@
 		id="file-input"
 		type="file"
 		multiple
-		accept="application/pdf,.docx,image/jpeg,image/png,image/webp"
+		accept="application/pdf,.docx,.doc,image/jpeg,image/png,image/webp"
 		on:change={handleSelect}
 	/>
 </div>
@@ -116,7 +114,7 @@
 		min-height: 75vh;
 		min-width: calc(100vw - 3vw);
 		border-radius: 16px;
-		border: 1px solid rgba(0, 0, 0, 0.2);
+		border: 2px dashed rgba(189, 147, 249, 0.5);
 		background: var(--bg);
 		color: var(--fg);
 		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
@@ -148,7 +146,16 @@
 		align-items: stretch;
 	}
 	.empty {
-		color: var(--fg);
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		color: var(--accent);
+		font-size: 2rem;
+		font-weight: 700;
+		letter-spacing: 2px;
+		opacity: 0.6;
+		pointer-events: none;
 	}
 	input[type='file'] {
 		display: none;

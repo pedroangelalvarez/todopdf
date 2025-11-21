@@ -16,6 +16,19 @@
 	let bubbleEl: HTMLDivElement | null = null;
 	let rowSpan = 1;
 	let unlocked = false;
+	let zoomLevel = 1; // 1 = 100%
+	const MIN_ZOOM = 0.5; // 50%
+	const MAX_ZOOM = 3; // 300%
+	const ZOOM_STEP = 0.25; // 25% por clic
+
+	// Variables para panning
+	let panX = 0;
+	let panY = 0;
+	let isDragging = false;
+	let startX = 0;
+	let startY = 0;
+	let scrollLeft = 0;
+	let scrollTop = 0;
 
 	onMount(async () => {
 		try {
@@ -40,11 +53,67 @@
 	const dispatch = createEventDispatcher();
 	async function toggleExpand() {
 		expanded = !expanded;
-		if (expanded && !thumbsLoaded) {
+		if (expanded && !thumbsLoaded && numPages > 1) {
 			renderThumbnails();
+		}
+		// Resetear zoom y panning al cerrar el modal
+		if (!expanded) {
+			zoomLevel = 1;
+			panX = 0;
+			panY = 0;
 		}
 		// El modal no necesita ajustar el span del grid
 		rowSpan = 1;
+	}
+
+	function zoomIn() {
+		if (zoomLevel < MAX_ZOOM) {
+			zoomLevel = Math.min(zoomLevel + ZOOM_STEP, MAX_ZOOM);
+		}
+	}
+
+	function zoomOut() {
+		if (zoomLevel > MIN_ZOOM) {
+			zoomLevel = Math.max(zoomLevel - ZOOM_STEP, MIN_ZOOM);
+		}
+	}
+
+	function resetZoom() {
+		zoomLevel = 1;
+	}
+
+	function handleWheel(event: WheelEvent) {
+		event.preventDefault();
+		if (event.deltaY < 0) {
+			zoomIn();
+		} else {
+			zoomOut();
+		}
+	}
+
+	function handleMouseDown(event: MouseEvent) {
+		const container = event.currentTarget as HTMLElement;
+		isDragging = true;
+		startX = event.pageX - container.offsetLeft;
+		startY = event.pageY - container.offsetTop;
+		scrollLeft = panX;
+		scrollTop = panY;
+	}
+
+	function handleMouseMove(event: MouseEvent) {
+		if (!isDragging) return;
+		event.preventDefault();
+		const container = event.currentTarget as HTMLElement;
+		const x = event.pageX - container.offsetLeft;
+		const y = event.pageY - container.offsetTop;
+		const walkX = x - startX;
+		const walkY = y - startY;
+		panX = scrollLeft + walkX;
+		panY = scrollTop + walkY;
+	}
+
+	function handleMouseUp() {
+		isDragging = false;
 	}
 
 	async function renderThumbnails() {
@@ -59,7 +128,7 @@
 			const maxThumbs = Math.min(numPages, 12);
 			for (let i = 1; i <= maxThumbs; i++) {
 				const page = await pdf.getPage(i);
-				const viewport = page.getViewport({ scale: 0.3 });
+				const viewport = page.getViewport({ scale: 1.0 });
 				const canvas = document.createElement('canvas');
 				canvas.width = Math.floor(viewport.width);
 				canvas.height = Math.floor(viewport.height);
@@ -106,7 +175,7 @@
 
 			const pdf = await pdfjsModule.getDocument({ url: objectUrl }).promise;
 			const page = await pdf.getPage(1);
-			const viewport = page.getViewport({ scale: 0.5 });
+			const viewport = page.getViewport({ scale: 2.0 });
 			const canvas = document.createElement('canvas');
 			canvas.width = Math.floor(viewport.width);
 			canvas.height = Math.floor(viewport.height);
@@ -166,6 +235,16 @@
 				{#if expanded}–{:else}+{/if}
 			</button>
 		{/if}
+		{#if !loading && !error && numPages === 1 && singleThumbUrl}
+			<button
+				class="magnify-btn"
+				aria-label="Ver previsualización"
+				on:click|stopPropagation={toggleExpand}
+				title="Ver previsualización"
+			>
+				🔍
+			</button>
+		{/if}
 		<button
 			class="remove-btn"
 			aria-label="Quitar PDF"
@@ -175,7 +254,12 @@
 		<div class="content">
 			{#if !loading && !error && numPages === 1 && singleThumbUrl}
 				<div class="single-container">
-					<div class="single-box" title={file?.name || ''}>
+					<div
+						class="single-box"
+						title={file?.name || ''}
+						on:click|stopPropagation={toggleExpand}
+						style="cursor: pointer;"
+					>
 						<img class="single-img" src={singleThumbUrl} alt={file?.name || 'Vista previa PDF'} />
 					</div>
 					<p class="single-name">{file?.name || ''}</p>
@@ -201,16 +285,45 @@
 		<div class="modal-backdrop" on:click={toggleExpand}>
 			<div class="modal" on:click|stopPropagation>
 				<div class="modal-header">
-					<h3 class="modal-title">Vistas previas del PDF</h3>
+					<h3 class="modal-title">
+						{numPages === 1 ? 'Vista previa del PDF' : 'Vistas previas del PDF'}
+					</h3>
 					<div class="modal-actions">
-						<button
-							class="unlock-btn"
-							on:click|stopPropagation={unlockPages}
-							disabled={unlocking}
-							aria-label="Desbloquear páginas"
-						>
-							{unlocking ? 'Desbloqueando…' : 'Desbloquear'}
-						</button>
+						{#if numPages === 1}
+							<!-- Controles de zoom para vista previa de una página -->
+							<div class="zoom-controls">
+								<button
+									class="zoom-btn"
+									on:click|stopPropagation={zoomOut}
+									disabled={zoomLevel <= MIN_ZOOM}
+									aria-label="Alejar"
+									title="Alejar (-)">−</button
+								>
+								<button
+									class="zoom-reset-btn"
+									on:click|stopPropagation={resetZoom}
+									aria-label="Restablecer zoom"
+									title="100%">{Math.round(zoomLevel * 100)}%</button
+								>
+								<button
+									class="zoom-btn"
+									on:click|stopPropagation={zoomIn}
+									disabled={zoomLevel >= MAX_ZOOM}
+									aria-label="Acercar"
+									title="Acercar (+)">+</button
+								>
+							</div>
+						{/if}
+						{#if numPages > 1}
+							<button
+								class="unlock-btn"
+								on:click|stopPropagation={unlockPages}
+								disabled={unlocking}
+								aria-label="Desbloquear páginas"
+							>
+								{unlocking ? 'Desbloqueando…' : 'Desbloquear'}
+							</button>
+						{/if}
 						<button
 							class="close-btn"
 							on:click|stopPropagation={toggleExpand}
@@ -219,7 +332,29 @@
 					</div>
 				</div>
 				<div class="modal-body">
-					{#if !thumbsLoaded}
+					{#if numPages === 1 && singleThumbUrl}
+						<!-- Vista previa ampliada para PDF de una página -->
+						<div
+							class="single-page-preview"
+							on:wheel={handleWheel}
+							on:mousedown={handleMouseDown}
+							on:mousemove={handleMouseMove}
+							on:mouseup={handleMouseUp}
+							on:mouseleave={handleMouseUp}
+						>
+							<div
+								class="zoom-container"
+								style="transform: scale({zoomLevel}) translate({panX / zoomLevel}px, {panY /
+									zoomLevel}px); transform-origin: center center;"
+							>
+								<img
+									src={singleThumbUrl}
+									alt={file?.name || 'Vista previa PDF'}
+									draggable="false"
+								/>
+							</div>
+						</div>
+					{:else if !thumbsLoaded}
 						<div class="loading">Generando miniaturas…</div>
 					{:else}
 						<div class="pages-grid">
@@ -250,9 +385,6 @@
 		flex-direction: column;
 		overflow: hidden;
 	}
-	.pdf-bubble.expanded {
-		/* no extra */
-	}
 	.expand-btn {
 		position: absolute;
 		left: 6px;
@@ -267,6 +399,30 @@
 		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 		cursor: pointer;
 		z-index: 2;
+	}
+	.magnify-btn {
+		position: absolute;
+		left: 6px;
+		top: 6px;
+		width: 28px;
+		height: 28px;
+		border-radius: 999px;
+		border: none;
+		background: rgba(255, 255, 255, 0.15);
+		backdrop-filter: blur(10px);
+		color: var(--fg);
+		font-size: 16px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+		cursor: pointer;
+		z-index: 2;
+		transition: all 0.2s ease;
+	}
+	.magnify-btn:hover {
+		background: rgba(255, 255, 255, 0.25);
+		transform: scale(1.1);
 	}
 	.remove-btn {
 		position: absolute;
@@ -416,6 +572,52 @@
 		opacity: 0.7;
 		cursor: not-allowed;
 	}
+	.zoom-controls {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		background: rgba(255, 255, 255, 0.1);
+		padding: 4px;
+		border-radius: 8px;
+	}
+	.zoom-btn {
+		background: var(--accent);
+		color: var(--bg);
+		border: none;
+		width: 28px;
+		height: 28px;
+		border-radius: 6px;
+		font-size: 16px;
+		font-weight: 700;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+	.zoom-btn:hover:not(:disabled) {
+		transform: scale(1.1);
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+	}
+	.zoom-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+	.zoom-reset-btn {
+		background: rgba(255, 255, 255, 0.15);
+		color: var(--fg);
+		border: none;
+		padding: 4px 10px;
+		border-radius: 6px;
+		font-size: 11px;
+		font-weight: 600;
+		min-width: 50px;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+	.zoom-reset-btn:hover {
+		background: rgba(255, 255, 255, 0.25);
+	}
 	.modal-body {
 		padding: 12px;
 		overflow: auto;
@@ -453,5 +655,31 @@
 		padding: 2px 6px;
 		border-radius: 999px;
 		font-size: 11px;
+	}
+	.single-page-preview {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 20px;
+		max-height: 70vh;
+		overflow: hidden;
+		cursor: grab;
+	}
+	.single-page-preview:active {
+		cursor: grabbing;
+	}
+	.zoom-container {
+		transition: transform 0.2s ease;
+		display: inline-block;
+	}
+	.zoom-container img {
+		max-width: 100%;
+		max-height: 70vh;
+		object-fit: contain;
+		border-radius: 8px;
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+		display: block;
+		user-select: none;
+		pointer-events: none;
 	}
 </style>
